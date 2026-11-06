@@ -1,0 +1,40 @@
+{
+  "name": "mrhamidrezam/jsonflux",
+  "description": "Zero-dependency streaming JSON parser, partial chunk reader, and resilient repair engine for PHP 8.2+ and LLM outputs.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "json",
+    "streaming",
+    "parser",
+    "json-repair",
+    "llm",
+    "openai",
+    "sse",
+    "server-sent-events",
+    "partial-json"
+  ],
+  "authors": [
+    {
+      "name": "Hamidreza",
+      "email": "h4midrezam@gmail.com",
+      "homepage": "https://github.com/mrhamidrezam"
+    }
+  ],
+  "require": {
+    "php": ">=8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "JsonFlux\\": "src/"
+    }
+  },
+  "bin": [
+    "bin/jsonflux"
+  ],
+  "scripts": {
+    "test": "php tests/run.php"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

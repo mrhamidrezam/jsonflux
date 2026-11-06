@@ -1,0 +1,140 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Autoloader fallback
+$autoloaderLocations = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$loaded = false;
+foreach ($autoloaderLocations as $file) {
+    if (file_exists($file)) {
+        require_once $file;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    // Zero-dependency direct PSR-4 loader fallback
+    spl_autoload_register(function ($class) {
+        $prefix = 'JsonFlux\\';
+        $baseDir = __DIR__ . '/../src/';
+        $len = strlen($prefix);
+        if (strncmp($prefix, $class, $len) !== 0) {
+            return;
+        }
+        $relativeClass = substr($class, $len);
+        $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    });
+}
+
+use JsonFlux\JsonFlux;
+use JsonFlux\JsonRepair;
+use JsonFlux\Extractor;
+use JsonFlux\SSEParser;
+
+$args = array_slice($argv, 1);
+$command = $args[0] ?? 'help';
+
+function printBanner(): void {
+    echo "\033[1;36mJsonFlux CLI v0.1.0\033[0m - Resilient Streaming JSON & LLM Parser\n\n";
+}
+
+function printUsage(): void {
+    printBanner();
+    echo "Usage:\n";
+    echo "  jsonflux <command> [options] [arguments]\n\n";
+    echo "Commands:\n";
+    echo "  repair <input>     Repair malformed, broken, or truncated JSON (or from STDIN)\n";
+    echo "  extract <input>    Extract JSON documents from markdown codeblocks or prose\n";
+    echo "  validate <input>   Validate strictly if input is standard valid JSON\n";
+    echo "  sse                Read incoming Server-Sent Events stream from STDIN\n";
+    echo "  help               Display this help guide\n\n";
+    echo "Examples:\n";
+    echo "  jsonflux repair '{\"title\": \"hello world\", \"tags\": [\"ai\", \"php\"'\n";
+    echo "  cat response.md | jsonflux extract\n";
+    echo "  curl -s -N https://api.openai.com/... | jsonflux sse\n";
+}
+
+function readInput(?string $arg): string {
+    if ($arg !== null && $arg !== '-') {
+        return $arg;
+    }
+    // Read from STDIN
+    $content = stream_get_contents(STDIN);
+    return $content !== false ? $content : '';
+}
+
+try {
+    switch ($command) {
+        case 'repair':
+            $input = readInput($args[1] ?? null);
+            if (trim($input) === '') {
+                echo "\033[1;31mError:\033[0m No JSON input provided to repair.\n";
+                exit(1);
+            }
+            $repaired = JsonFlux::repair($input);
+            $decoded = json_decode($repaired);
+            echo json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+            exit(0);
+
+        case 'extract':
+            $input = readInput($args[1] ?? null);
+            if (trim($input) === '') {
+                echo "\033[1;31mError:\033[0m No input provided to extract.\n";
+                exit(1);
+            }
+            $results = Extractor::extractAll($input);
+            if (empty($results)) {
+                echo "\033[1;33mWarning:\033[0m No JSON documents found in the provided text.\n";
+                exit(1);
+            }
+            echo json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+            exit(0);
+
+        case 'validate':
+            $input = readInput($args[1] ?? null);
+            if (JsonFlux::isValid($input)) {
+                echo "\033[1;32m✓ Valid JSON\033[0m\n";
+                exit(0);
+            } else {
+                echo "\033[1;31m✗ Invalid JSON\033[0m\n";
+                exit(1);
+            }
+
+        case 'sse':
+            $sse = new SSEParser();
+            while (!feof(STDIN)) {
+                $line = fgets(STDIN);
+                if ($line === false) {
+                    break;
+                }
+                $messages = $sse->feed($line);
+                foreach ($messages as $msg) {
+                    if ($msg['data'] === '[DONE]') {
+                        echo "\033[1;33m[Stream Complete]\033[0m\n";
+                    } else {
+                        echo "\033[1;34m[Event: {$msg['event']}]\033[0m {$msg['data']}\n";
+                    }
+                }
+            }
+            exit(0);
+
+        case 'help':
+        case '--help':
+        case '-h':
+        default:
+            printUsage();
+            exit(0);
+    }
+} catch (\Throwable $e) {
+    echo "\033[1;31mException:\033[0m " . $e->getMessage() . "\n";
+    exit(1);
+}
